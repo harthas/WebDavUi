@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-webdavui
-PKG_VERSION:=1.3.1
+PKG_VERSION:=1.3.2
 PKG_RELEASE:=1
 PKGARCH:=all
 
@@ -11,8 +11,12 @@ define Package/luci-app-webdavui
   SECTION:=luci
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
-  TITLE:=WebDavUi - multi-disk Lighttpd WebDAV management
+  TITLE:=LuCI support for WebDav
   DEPENDS:=+luci-base +rpcd +rpcd-mod-file +jshn +jsonfilter +lighttpd +lighttpd-mod-webdav +lighttpd-mod-auth +lighttpd-mod-authn_file +lighttpd-mod-access +openssl-util +block-mount
+endef
+
+define Package/luci-app-webdavui/description
+  LuCI support for WebDav
 endef
 
 define Build/Compile

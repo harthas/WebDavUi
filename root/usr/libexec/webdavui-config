@@ -27,7 +27,8 @@ list=$(mktemp /var/etc/webdavui-mounts.XXXXXX)
 tmp=$(mktemp /var/etc/webdavui.XXXXXX)
 trap 'rm -f "$tmp" "$list"' EXIT
 awk -v base="$root/" 'index($2,base)==1 {n=substr($2,length(base)+1); if(n!="" && n!~/\// && n~/^[a-zA-Z0-9_-]+$/) print $2}' /proc/mounts | sort -u > "$list"
-upload=/var/run/webdavui-root/no-upload
+upload=/var/run/webdavui-no-upload
+mkdir -p "$upload"
 limit=64
 while IFS= read -r disk; do
  [ -d "$disk" ] || continue

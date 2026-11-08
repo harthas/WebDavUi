@@ -6,7 +6,7 @@ const dependencies=fs.readFileSync(path.join(project,'dependencies.txt'),'utf8')
 const root=path.join(project,'root'),build=path.join(project,'.build'),out=path.resolve(process.argv[2]||path.join(project,'dist'));
 fs.mkdirSync(build,{recursive:true}); fs.mkdirSync(out,{recursive:true});
 const ctl=path.join(build,'control');fs.mkdirSync(ctl,{recursive:true});
-fs.writeFileSync(path.join(ctl,'control'),`Package: luci-app-webdavui\nVersion: ${version}\nArchitecture: all\nMaintainer: Local webdavUI\nSection: luci\nPriority: optional\nDepends: ${dependencies}\nDescription: LuCI UI for Lighttpd WebDAV with locking and property storage\n`);
+fs.writeFileSync(path.join(ctl,'control'),`Package: luci-app-webdavui\nVersion: ${version}\nArchitecture: all\nMaintainer: Local webdavUI\nSection: luci\nPriority: optional\nDepends: ${dependencies}\nDescription: LuCI support for WebDav\n`);
 fs.writeFileSync(path.join(ctl,'conffiles'),'/etc/config/webdavui\n');
 for(const name of ['postinst','prerm'])fs.copyFileSync(path.join(project,'scripts',name),path.join(ctl,name));
 for(const [dir,name] of [[root,'data.tar.gz'],[ctl,'control.tar.gz']])cp.execFileSync('tar',['-czf',path.join(build,name),'-C',dir,'.']);

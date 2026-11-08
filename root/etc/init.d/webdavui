@@ -3,6 +3,14 @@ START=95
 STOP=10
 USE_PROCD=1
 start_service() {
+ # 为 LuCI 软件包页面提供本地安装包的描述元数据。
+ if command -v opkg >/dev/null 2>&1 && [ -f /usr/lib/opkg/info/luci-app-webdavui.control ]; then
+  local lists_dir
+  lists_dir=$(sed -rne 's#^lists_dir [^ ]+ ([^ ]+).*#\1#p' /etc/opkg.conf /etc/opkg/*.conf 2>/dev/null | tail -n 1)
+  lists_dir=${lists_dir:-/usr/lib/opkg/lists}
+  mkdir -p "$lists_dir"
+  { cat /usr/lib/opkg/info/luci-app-webdavui.control; printf '\n'; } | gzip -c > "$lists_dir/webdavui-local" || true
+ fi
  local enabled
  config_load webdavui
  config_get_bool enabled main enabled 0
