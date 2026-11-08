@@ -1,27 +1,95 @@
-name: Check and build IPK
+name: Build IPK and APK and publish Release
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  build:
+  ipk:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check JavaScript and shell syntax
+      - name: Check syntax
         run: |
           node --check root/www/luci-static/resources/view/webdavui/config.js
           for file in install.sh uninstall.sh scripts/postinst scripts/prerm root/etc/init.d/webdavui root/etc/hotplug.d/block/95-webdavui root/usr/libexec/webdavui-config root/usr/libexec/webdavui-move root/usr/libexec/rpcd/webdavui; do
             sh -n "$file"
           done
-      - name: Build architecture-independent IPK
+      - name: Build IPK
         run: node scripts/build.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: WebDavUi-IPK
           path: dist/*.ipk
+          if-no-files-found: error
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SDK feed
+        run: |
+          mkdir -p feed/luci-app-webdavui artifacts
+          cp -a root scripts Makefile VERSION feed/luci-app-webdavui/
+      - name: Build native OpenWrt APK
+        uses: openwrt/gh-action-sdk@main
+        env:
+          ARCH: x86_64-25.12.5
+          FEED_DIR: ${{ github.workspace }}/feed
+          ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
+          PACKAGES: luci-app-webdavui
+          NO_SHFMT_CHECK: '1'
+          V: s
+      - name: Collect plugin APK only
+        run: |
+          mkdir -p dist
+          find artifacts/bin -type f -name 'luci-app-webdavui*.apk' -exec cp {} dist/ \;
+          test "$(find dist -name '*.apk' | wc -l)" -ge 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WebDavUi-APK
+          path: dist/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: APK-build-logs
+          path: artifacts/logs/
+  release:
+    needs: [ipk, apk]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: WebDavUi-*
+          path: dist
+          merge-multiple: true
+      - name: Publish both installable packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(cat VERSION)"
+          test "$(find dist -name '*.ipk' | wc -l)" -ge 1
+          test "$(find dist -name '*.apk' | wc -l)" -ge 1
+          cat > release-notes.md <<'NOTES'
+          WebDavUi installable packages.
+
+          - IPK: for opkg-based OpenWrt / KWRT.
+          - APK: native OpenWrt 25.12 package format; not an Android APK.
+          - Plugin code is architecture-independent. Runtime dependencies are resolved from the matching firmware feeds.
+          - Third-party APK signing/trust must be configured according to the target firmware policy.
+          NOTES
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/*.ipk dist/*.apk --clobber
+          else
+            gh release create "$tag" dist/*.ipk dist/*.apk --target "$GITHUB_SHA" --title "WebDavUi $tag" --notes-file release-notes.md
+          fi
