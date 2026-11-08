@@ -15,7 +15,7 @@ return view.extend({
  load: function() { return Promise.all([uci.load('webdavui'),getStatus()]); },
  render: function(data) {
   var status = E('div', {'class':'cbi-section webdavui-module'}, []);
-  var diskTable = E('div', {'class':'cbi-section'}, []);
+  var diskTable = E('div', {'class':'cbi-section webdavui-module'}, []);
   var openMove = function(disk) {
    var target=E('input',{'class':'cbi-input-text',value:disk.path,'aria-label':'新挂载点',style:'width:100%'});
    var submit=E('button',{'class':'cbi-button cbi-button-positive'},'确认修改');
@@ -81,6 +81,6 @@ return view.extend({
    E('button',{'class':'cbi-button cbi-button-action',click:ui.createHandlerFn(this,function(){return setPassword(user.value,pass.value).then(function(r){if(r.ok)pass.value='';ui.addNotification(null,E('p',{},r.message),r.ok?'info':'error');});})},'更新账号'),
    E('p',{},'HTTP Basic 认证不加密传输，请仅在可信局域网使用。')]);
   var style=E('style',{},'.webdavui-page{font-family:inherit;font-size:14px;line-height:1.65}.webdavui-page h2,.webdavui-page h3,.webdavui-page p,.webdavui-page small,.webdavui-page label,.webdavui-page input,.webdavui-page button,.webdavui-page select,.webdavui-page .cbi-value-description,.webdavui-page .cbi-section-descr,.webdavui-page .cbi-button,.webdavui-page th,.webdavui-page td{font-family:inherit;font-size:14px;line-height:1.65}.webdavui-page h2,.webdavui-page h3{font-weight:600}.webdavui-page .webdavui-module{margin-top:28px;margin-bottom:0;padding:20px;border:1px solid var(--border-color,#dedede);border-radius:8px}.webdavui-page .webdavui-module h3{margin:0 0 14px}.webdavui-page .webdavui-module p{margin:10px 0}.webdavui-page .webdavui-module .cbi-button{margin:4px 5px 4px 0}.webdavui-page .webdavui-module label{display:inline-block;margin:6px 14px 6px 0}.webdavui-page .webdavui-module input{margin-left:6px;max-width:100%}.webdavui-page .webdavui-module:last-child{margin-bottom:24px}@media(max-width:600px){.webdavui-page .webdavui-module{padding:16px;margin-top:22px}.webdavui-page .webdavui-module label{display:block}.webdavui-page .webdavui-module input{display:block;margin:6px 0 0;width:100%}}');
-  return m.render().then(function(map){return E('div',{'class':'webdavui-page'},[style,diskTable,map,controls,accounts,status]);});
+  return m.render().then(function(map){return E('div',{'class':'webdavui-page'},[style,diskTable,E('div',{'class':'cbi-section webdavui-module'},[map]),controls,accounts,status]);});
  }
 });
