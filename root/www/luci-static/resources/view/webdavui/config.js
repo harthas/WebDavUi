@@ -45,7 +45,7 @@ return view.extend({
     E('p',{},[E('a',{href:url,target:'_blank',rel:'noopener noreferrer'},url)])]);
    dom.content(diskTable,[
     E('table',{'class':'table'},[
-     E('tr',{'class':'tr table-titles'},[E('th',{'class':'th'},'设备'),E('th',{'class':'th'},'硬盘容量'),E('th',{'class':'th'},'当前挂载点'),E('th',{'class':'th'},'文件系统'),E('th',{'class':'th'},'操作')])
+     E('tr',{'class':'tr table-titles'},[E('th',{'class':'th'},'已挂载硬盘'),E('th',{'class':'th'},'硬盘容量'),E('th',{'class':'th'},'当前挂载点'),E('th',{'class':'th'},'文件系统'),E('th',{'class':'th'},'操作')])
     ].concat((s.mounts||[]).map(function(d){return E('tr',{'class':'tr'},[
      E('td',{'class':'td'},d.device),
      E('td',{'class':'td'},[E('div',{},'总容量：'+(d.capacity||'—')),E('div',{},'已用容量：'+(d.used||'—')),E('div',{},'剩余容量：'+(d.available||'—'))]),
@@ -84,3 +84,4 @@ return view.extend({
   return m.render().then(function(map){return E('div',{'class':'webdavui-page'},[style,diskTable,E('div',{'class':'cbi-section webdavui-module'},[map]),controls,accounts,status]);});
  }
 });
+
