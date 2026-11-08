@@ -1,6 +1,6 @@
 # WebDavUi
 
-轻量 OpenWrt / KWRT LuCI 插件，用 Lighttpd WebDAV 共享多块硬盘。当前版本 **1.3.2**。
+轻量 OpenWrt / KWRT LuCI 插件，用 Lighttpd WebDAV 共享多块硬盘。当前版本 **1.3.3**。
 
 入口：**服务 → WebDavUi**。
 
@@ -19,11 +19,11 @@
 
 ### opkg 固件：安装 IPK
 
-从本仓库 Actions 的成功构建中下载 IPK artifact，或在源码目录执行 `node scripts/build.cjs` 构建。将 `luci-app-webdavui_1.3.2_all.ipk` 复制至路由器后：
+从本仓库 Actions 的成功构建中下载 IPK artifact，或在源码目录执行 `node scripts/build.cjs` 构建。将 `luci-app-webdavui_1.3.3_all.ipk` 复制至路由器后：
 
 ```sh
 opkg update
-opkg install ./luci-app-webdavui_1.3.2_all.ipk
+opkg install ./luci-app-webdavui_1.3.3_all.ipk
 ```
 
 安装包的 Depends 包含全部直接依赖；opkg 会从该设备的软件源自动安装尚未满足的依赖。无需手动逐个安装 Lighttpd 模块。all 表示插件自身为脚本、与 CPU 架构无关；二进制依赖由目标固件的软件源提供。

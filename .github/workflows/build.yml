@@ -29,27 +29,17 @@ jobs:
           if-no-files-found: error
   apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare SDK feed
+      - name: Package native APK using official OpenWrt SDK tool
         run: |
-          mkdir -p feed/luci-app-webdavui artifacts
-          cp -a root scripts Makefile VERSION feed/luci-app-webdavui/
-      - name: Build native OpenWrt APK
-        uses: openwrt/gh-action-sdk@main
-        env:
-          ARCH: x86_64-25.12.5
-          FEED_DIR: ${{ github.workspace }}/feed
-          ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
-          PACKAGES: luci-app-webdavui
-          NO_SHFMT_CHECK: '1'
-          V: s
-      - name: Collect plugin APK only
-        run: |
-          mkdir -p dist
-          find artifacts/bin -type f -name 'luci-app-webdavui*.apk' -exec cp {} dist/ \;
-          test "$(find dist -name '*.apk' | wc -l)" -ge 1
+          docker pull openwrt/sdk:x86_64-25.12.5
+          docker run --rm --user 0 --entrypoint /bin/bash -v "$GITHUB_WORKSPACE:/feed" -w /builder openwrt/sdk:x86_64-25.12.5 -lc '
+            if [ ! -x staging_dir/host/bin/apk ] && [ -f setup.sh ]; then bash setup.sh; fi
+            test -x staging_dir/host/bin/apk
+            bash /feed/scripts/build-apk.sh /feed
+          '
       - uses: actions/upload-artifact@v4
         with:
           name: WebDavUi-APK

@@ -84,4 +84,3 @@ return view.extend({
   return m.render().then(function(map){return E('div',{'class':'webdavui-page'},[style,diskTable,E('div',{'class':'cbi-section webdavui-module'},[map]),controls,accounts,status]);});
  }
 });
-
