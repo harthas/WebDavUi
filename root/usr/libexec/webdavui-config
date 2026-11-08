@@ -1,0 +1,92 @@
+#!/bin/sh
+set -e
+. /lib/functions.sh
+config_load webdavui
+config_get bind main bind 127.0.0.1
+config_get port main port 5006
+config_get root main root /mnt/usb
+config_get_bool readonly main readonly 0
+fail() { echo "$*" >&2; exit 1; }
+case "$bind" in ''|*[!0-9.]*) fail '监听地址必须是 IPv4 地址';; esac
+case "$port" in ''|*[!0-9]*) fail '端口无效';; esac
+[ "$port" -ge 1024 ] && [ "$port" -le 65535 ] || fail '端口范围为 1024–65535'
+
+valid_path() {
+ case "$1" in /*) ;; *) fail '共享父目录必须是绝对路径';; esac
+ case "$1" in *[!a-zA-Z0-9_./-]*|*/../*|*/..|*/./*|*//*) fail '目录包含不支持的字符或路径跳转';; esac
+}
+valid_path "$root"
+[ -d "$root" ] || fail '共享父目录不存在'
+root=$(readlink -f "$root")
+[ "$root" != / ] || fail '不能将系统根目录作为硬盘父目录'
+[ -s /etc/webdavui/users ] || fail '请先设置 WebDAV 账号密码'
+mkdir -p /var/etc /var/run/webdavui-root
+# 此目录仅包含虚拟挂载点占位文件夹，禁止写入。
+for entry in /var/run/webdavui-root/*; do [ ! -d "$entry" ] || rmdir "$entry" 2>/dev/null || true; done
+list=$(mktemp /var/etc/webdavui-mounts.XXXXXX)
+tmp=$(mktemp /var/etc/webdavui.XXXXXX)
+trap 'rm -f "$tmp" "$list"' EXIT
+awk -v base="$root/" 'index($2,base)==1 {n=substr($2,length(base)+1); if(n!="" && n!~/\// && n~/^[a-zA-Z0-9_-]+$/) print $2}' /proc/mounts | sort -u > "$list"
+upload=/var/run/webdavui-root/no-upload
+limit=64
+while IFS= read -r disk; do
+ [ -d "$disk" ] || continue
+ state="$disk/.webdavui"
+ mkdir -p "$state/upload"
+ chmod 700 "$state" "$state/upload"
+ name=$(basename "$disk")
+ mkdir -p "/var/run/webdavui-root/$name"
+ if [ "$limit" = 64 ]; then upload="$state/upload"; limit=0; fi
+done < "$list"
+ro=disable
+[ "$readonly" = 1 ] && ro=enable
+cat > "$tmp" <<EOF
+server.modules = ( "mod_access", "mod_auth", "mod_authn_file", "mod_webdav", "mod_dirlisting", "mod_staticfile" )
+server.bind = "$bind"
+server.port = $port
+server.document-root = "/var/run/webdavui-root"
+server.errorlog = "/tmp/webdavui-error.log"
+server.upload-dirs = ( "$upload" )
+server.max-request-size = $limit
+server.max-worker = 0
+server.max-connections = 64
+server.max-fds = 256
+dir-listing.activate = "enable"
+dir-listing.encoding = "utf-8"
+auth.backend = "htpasswd"
+auth.backend.htpasswd.userfile = "/etc/webdavui/users"
+auth.require = ( "/" => ( "method" => "basic", "realm" => "webdavUI", "require" => "valid-user" ) )
+webdav.activate = "enable"
+webdav.is-readonly = "enable"
+\$HTTP["url"] == "/" {
+ \$HTTP["request-method"] !~ "^(GET|HEAD|OPTIONS|PROPFIND)$" {
+  url.access-deny = ( "" )
+ }
+}
+EOF
+while IFS= read -r disk; do
+ name=$(basename "$disk")
+ cat >> "$tmp" <<EOF
+\$HTTP["url"] =~ "^/$name(/|$)" {
+ server.document-root = "$root"
+ webdav.is-readonly = "$ro"
+ webdav.sqlite-db-name = "$disk/.webdavui/properties.sqlite"
+}
+\$HTTP["url"] =~ "^/$name/?$" {
+ \$HTTP["request-method"] =~ "^(PUT|DELETE|MOVE|COPY|MKCOL)$" {
+  url.access-deny = ( "" )
+ }
+}
+EOF
+done < "$list"
+cat >> "$tmp" <<'EOF'
+$HTTP["url"] =~ "(^|/)\\.webdavui(/|$)" {
+ url.access-deny = ( "" )
+}
+EOF
+/usr/sbin/lighttpd -tt -f "$tmp" || fail 'Lighttpd 多硬盘配置检查失败'
+chmod 600 "$tmp"
+mv "$tmp" /var/etc/webdavui.conf
+mv "$list" /var/run/webdavui-mounts
+trap - EXIT
+

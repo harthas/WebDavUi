@@ -1,0 +1,7 @@
+{
+ "luci-app-webdavui": {
+  "description": "Manage Lighttpd WebDAV through WebDavUi",
+  "read": {"uci": ["webdavui"], "ubus": {"webdavui": ["status", "logs"]}},
+  "write": {"uci": ["webdavui"], "ubus": {"webdavui": ["action", "password", "move_mount"]}}
+ }
+}

@@ -1,0 +1,8 @@
+{
+ "admin/services/webdavui": {
+  "title": "WebDavUi",
+  "order": 65,
+  "action": {"type": "view", "path": "webdavui/config"},
+  "depends": {"acl": ["luci-app-webdavui"], "uci": {"webdavui": true}}
+ }
+}

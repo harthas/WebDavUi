@@ -1,0 +1,82 @@
+#!/bin/sh
+. /usr/share/libubox/jshn.sh
+reply() { json_init; json_add_boolean ok "$1"; json_add_string message "$2"; json_dump; }
+case "$1" in
+list)
+ echo '{"status":{},"action":{"action":""},"password":{"username":"","password":""},"move_mount":{"old":"","target":""},"logs":{}}'
+ ;;
+call)
+ case "$2" in
+ status)
+  running=0
+  ubus call service list '{"name":"webdavui"}' | jsonfilter -e '@.webdavui.instances.*.running' | grep -q true && running=1
+  mounted=0
+  disks=''
+   base=$(uci -q get webdavui.main.root)
+   disks=$(awk -v base="$base/" 'index($2,base)==1 {n=substr($2,length(base)+1); if(n!="" && n!~/\// && n~/^[a-zA-Z0-9_-]+$/) print $2}' /proc/mounts | sort -u)
+   [ -z "$disks" ] || mounted=1
+   space=''
+   for disk in $disks; do space="$space$(df -h "$disk" 2>/dev/null | tail -1)
+"; done
+  json_init
+  json_add_boolean running "$running"
+  json_add_boolean mounted "$mounted"
+  json_add_string space "$space"
+  json_add_string disks "$disks"
+  json_add_array mounts
+  for p in $disks; do
+   device=$(awk -v p="$p" '$2==p {print $1}' /proc/mounts)
+   type=$(awk -v p="$p" '$2==p {print $3}' /proc/mounts)
+   json_add_object ''
+   json_add_string path "$p"
+   json_add_string device "$device"
+   json_add_string type "$type"
+   json_add_string capacity "$(df -hP "$p" 2>/dev/null | awk 'NR==2 {print $2}')"
+   json_add_string used "$(df -hP "$p" 2>/dev/null | awk 'NR==2 {print $3}')"
+   json_add_string available "$(df -hP "$p" 2>/dev/null | awk 'NR==2 {print $4}')"
+   json_close_object
+  done
+  json_close_array
+  json_dump
+  ;;
+ logs)
+  json_init; json_add_string log "$(tail -40 /tmp/webdavui-error.log 2>/dev/null)"; json_dump
+  ;;
+ action)
+  read -r input
+  json_load "$input"
+  json_get_var action action
+  case "$action" in
+   start|restart|reload)
+    result=$(/usr/libexec/webdavui-config 2>&1) || { reply 0 "$result"; exit 0; }
+    result=$(/etc/init.d/webdavui "$action" 2>&1) && reply 1 '操作完成' || reply 0 "$result"
+    ;;
+   stop) /etc/init.d/webdavui stop; reply 1 '服务已停止';;
+   check) result=$(/usr/libexec/webdavui-config 2>&1) && reply 1 '配置检查通过' || reply 0 "$result";;
+   *) reply 0 '不支持的操作';;
+  esac
+  ;;
+ move_mount) exec /usr/libexec/webdavui-move;;
+ password)
+  read -r input
+  json_load "$input"
+  json_get_var username username
+  json_get_var password password
+  case "$username" in ''|*[!a-zA-Z0-9_.-]*) reply 0 '用户名仅支持英文、数字、下划线、点和短横线'; exit 0;; esac
+  [ "${#password}" -ge 8 ] || { reply 0 '密码至少 8 个字符'; exit 0; }
+  [ "${#password}" -le 256 ] || { reply 0 '密码过长'; exit 0; }
+  [ "$(printf '%s' "$password" | tr -d '\r\n')" = "$password" ] || { reply 0 '密码不能包含换行'; exit 0; }
+  hash=$(printf '%s\n' "$password" | openssl passwd -apr1 -stdin 2>/dev/null) || { reply 0 '生成密码摘要失败，需要 openssl-util'; exit 0; }
+  case "$hash" in '$apr1$'*) ;; *) reply 0 '密码摘要无效'; exit 0;; esac
+  mkdir -p /etc/webdavui
+  umask 077
+  printf '%s:%s\n' "$username" "$hash" > /etc/webdavui/users.new
+  mv /etc/webdavui/users.new /etc/webdavui/users
+  uci set "webdavui.main.username=$username"
+  uci commit webdavui
+  reply 1 '账号已更新，仅保存密码摘要'
+  ;;
+ *) echo '{}';;
+ esac
+ ;;
+esac

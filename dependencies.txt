@@ -1,0 +1,12 @@
+luci-base
+rpcd
+rpcd-mod-file
+jshn
+jsonfilter
+lighttpd
+lighttpd-mod-webdav
+lighttpd-mod-auth
+lighttpd-mod-authn_file
+lighttpd-mod-access
+openssl-util
+block-mount

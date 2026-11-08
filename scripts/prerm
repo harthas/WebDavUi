@@ -1,0 +1,5 @@
+#!/bin/sh
+[ -n "$IPKG_INSTROOT" ] && exit 0
+/etc/init.d/webdavui stop
+/etc/init.d/webdavui disable
+exit 0

@@ -1,0 +1,96 @@
+#!/bin/sh
+# RPC 输入；仅允许迁移当前共享父目录下的直接磁盘挂载。
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+answer() { json_init; json_add_boolean ok "$1"; json_add_string message "$2"; json_dump; }
+fail() { answer 0 "$*"; exit 0; }
+read -r input
+json_load "$input" || fail '请求格式无效'
+json_get_var old old
+json_get_var target target
+base=$(uci -q get webdavui.main.root)
+base=$(readlink -f "$base")
+[ -n "$base" ] && [ "$base" != / ] || fail '共享父目录无效'
+for p in "$old" "$target"; do
+ case "$p" in "$base/"*) ;; *) fail '挂载点必须位于共享父目录内';; esac
+ name=${p#"$base/"}
+ case "$name" in ''|*[!a-zA-Z0-9_-]*) fail '挂载点必须是父目录下一级，名称仅支持英文、数字、下划线和短横线';; esac
+ [ ! -L "$p" ] || fail '不能使用符号链接作为挂载点'
+done
+[ "$old" != "$target" ] || fail '新旧挂载点相同'
+[ -z "$(uci -q changes fstab)" ] || fail '系统挂载配置存在未保存修改，请先在系统挂载点页面保存或撤销'
+record=$(awk -v p="$old" '$2==p {print $1 " " $3 " " $4}' /proc/mounts)
+[ -n "$record" ] || fail '原目录不是已挂载的磁盘'
+device=${record%% *}
+rest=${record#* }
+fstype=${rest%% *}
+opts=${rest#* }
+case "$device" in /dev/*) ;; *) fail '只支持真实块设备挂载';; esac
+case "$device" in /dev/loop*)
+ loopname=${device##*/}
+ [ "$(cat "/sys/block/$loopname/loop/autoclear" 2>/dev/null)" != 1 ] || fail '此镜像设备在卸载后会自动释放，不支持直接迁移挂载点'
+;; esac
+awk -v p="$target" '$2==p {found=1} END {exit !found}' /proc/mounts && fail '目标目录已有磁盘挂载'
+awk -v p="$old/" 'index($2,p)==1 {found=1} END {exit !found}' /proc/mounts && fail '原挂载点下还有嵌套挂载，请先处理'
+if [ -e "$target" ]; then
+ [ -d "$target" ] || fail '目标已存在且不是目录'
+ [ -z "$(ls -A "$target")" ] || fail '目标目录不为空，拒绝覆盖已有文件'
+fi
+uuid=$(block info "$device" 2>/dev/null | sed -n 's/.*UUID="\([^"]*\)".*/\1/p')
+case "$uuid" in ''|*[!a-zA-Z0-9-]*) fail '无法读取磁盘 UUID，不能安全保存永久挂载配置';; esac
+section=''
+matches=0
+find_mount() {
+ local id="$1" u d t
+ config_get u "$id" uuid
+ config_get d "$id" device
+ config_get t "$id" target
+ if [ "$u" = "$uuid" ] || [ "$d" = "$device" ] || [ "$t" = "$old" ]; then section="$id"; matches=$((matches+1)); fi
+ [ "$t" != "$target" ] || fail '目标目录已在持久挂载配置中分配给其他条目'
+}
+config_load fstab
+config_foreach find_mount mount
+[ "$matches" -le 1 ] || fail '发现多个匹配的挂载配置，请先在系统挂载点页面清理重复项'
+mkdir -p /var/lock /etc/webdavui
+mkdir /var/lock/webdavui-move.lock 2>/dev/null || fail '另一个挂载点修改正在进行'
+was_running=0
+ubus call service list '{"name":"webdavui"}' | jsonfilter -e '@.webdavui.instances.*.running' | grep -q true && was_running=1
+detached=0
+new_mounted=0
+created=0
+success=0
+cleanup() {
+ if [ "$success" != 1 ]; then
+  if [ "$new_mounted" = 1 ]; then umount "$target" 2>/dev/null || true; fi
+  if [ "$detached" = 1 ]; then
+   if ! awk -v p="$old" '$2==p {ok=1} END {exit !ok}' /proc/mounts; then
+    mount -t "$fstype" -o "$opts" "$device" "$old" 2>/dev/null || logger -t WebDavUi '挂载回滚失败，请在系统挂载点页面检查磁盘'
+   fi
+  fi
+  if [ "$created" = 1 ]; then rmdir "$target" 2>/dev/null || true; fi
+ fi
+ [ "$was_running" != 1 ] || /etc/init.d/webdavui start >/tmp/webdavui-rescan.log 2>&1
+ rmdir /var/lock/webdavui-move.lock 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+cp -p /etc/config/fstab /etc/webdavui/fstab-before-last-move || fail '无法备份系统挂载配置'
+chmod 600 /etc/webdavui/fstab-before-last-move
+if [ ! -d "$target" ]; then mkdir "$target" || fail '无法创建目标目录'; created=1; fi
+if [ "$was_running" = 1 ]; then /etc/init.d/webdavui stop >/dev/null 2>&1; sleep 1; fi
+if ! umount "$old" 2>/dev/null; then fail '磁盘正被其他程序占用，未修改挂载点。请停止下载、媒体服务或文件传输后重试'; fi
+detached=1
+mount -t "$fstype" -o "$opts" "$device" "$target" 2>/dev/null || fail '新挂载失败，将尝试恢复原挂载'
+new_mounted=1
+if [ -z "$section" ]; then section=$(uci add fstab mount) || fail '无法创建持久挂载条目'; fi
+if ! {
+ uci set "fstab.$section.uuid=$uuid" &&
+ uci set "fstab.$section.target=$target" &&
+ uci set "fstab.$section.enabled=1" &&
+ uci commit fstab
+}; then
+ uci revert fstab
+ fail '持久配置保存失败，将尝试恢复原挂载'
+fi
+success=1
+answer 1 "挂载点已改为 $target，并已按 UUID 保存。电脑中的文件夹名称会随之改变，请刷新 Z:"

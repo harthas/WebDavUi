@@ -1,0 +1,33 @@
+#!/bin/sh
+[ -n "$IPKG_INSTROOT" ] && exit 0
+set -e
+chmod 755 /etc/init.d/webdavui /usr/libexec/webdavui-config /usr/libexec/webdavui-move /usr/libexec/rpcd/webdavui
+mkdir -p /etc/webdavui /mnt/usb
+chmod 700 /etc/webdavui
+if [ ! -s /etc/webdavui/users ] && [ -s /etc/nginx/webdav.password ]; then
+ cp /etc/nginx/webdav.password /etc/webdavui/users
+fi
+if [ -s /etc/webdavui/users ]; then chmod 600 /etc/webdavui/users; fi
+if [ ! -e /etc/webdavui/initialized ]; then
+ bind=$(uci -q get webdavui.main.bind || true)
+ if [ "$bind" = 127.0.0.1 ]; then
+  lan=$(uci -q get network.lan.ipaddr || true)
+  lan=${lan%%/*}
+  case "$lan" in ''|*[!0-9.]*) lan=127.0.0.1;; esac
+  uci set "webdavui.main.bind=$lan"
+ fi
+ if [ -s /etc/webdavui/users ]; then
+  account=$(awk -F: 'NF>=2 && $1!="" {print $1;exit}' /etc/webdavui/users)
+  [ -z "$account" ] || uci set "webdavui.main.username=$account"
+ fi
+ touch /etc/webdavui/initialized
+fi
+uci -q delete webdavui.main.mode || true
+uci -q delete webdavui.main.mount || true
+uci commit webdavui
+/etc/init.d/webdavui enable
+# 新安装默认关闭；升级保留 enabled 状态。配置错误会在页面中显示。
+/etc/init.d/webdavui restart || true
+/etc/init.d/rpcd restart
+rm -f /tmp/luci-indexcache
+exit 0
