@@ -1,0 +1,16 @@
+#!/bin/sh
+# Check once per minute; procd handles configuration events asynchronously.
+. /lib/functions.sh
+while sleep 60; do
+ [ ! -d /var/lock/webdavui-move.lock ] || continue
+ ubus call service list '{"name":"webdavui"}' | jsonfilter -e '@.webdavui.instances.instance1.running' | grep -q true || continue
+ config_load webdavui
+ config_get root main root /mnt/usb
+ root=$(readlink -f "$root") || continue
+ [ -n "$root" ] && [ "$root" != / ] || continue
+ current=$(awk -v base="$root/" 'index($2,base)==1 {n=substr($2,length(base)+1); if(n!="" && n!~/\// && n~/^[a-zA-Z0-9_-]+$/) print $2}' /proc/mounts | sort -u)
+ saved=$(cat /var/run/webdavui-mounts 2>/dev/null)
+ [ "$current" != "$saved" ] || continue
+ logger -t webdavui 'Mounted disk list changed; requesting share refresh'
+ ubus call service event '{"type":"config.change","data":{"package":"webdavui"}}' >/dev/null 2>&1
+done

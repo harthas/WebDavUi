@@ -22,7 +22,7 @@ find root -type f | while IFS= read -r file; do
  cp "$file" "$dest"
  chmod 644 "$dest"
 done
-chmod 755 /etc/init.d/webdavui /usr/libexec/webdavui-config /usr/libexec/webdavui-move /usr/libexec/rpcd/webdavui
+chmod 755 /etc/init.d/webdavui /usr/libexec/webdavui-config /usr/libexec/webdavui-move /usr/libexec/webdavui-watch /usr/libexec/rpcd/webdavui
 sh scripts/postinst
 echo 'WebDavUi 已安装。入口：服务 → WebDavUi。新安装请先设置账号、检查共享目录，再启用服务。'
 echo '源码安装不在软件包列表注册；卸载请运行源码目录内的 uninstall.sh。'

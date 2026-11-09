@@ -1,6 +1,6 @@
 # WebDavUi
 
-轻量 OpenWrt / KWRT LuCI 插件，用 Lighttpd WebDAV 共享多块硬盘。当前版本 **1.3.3**。
+轻量 OpenWrt / KWRT LuCI 插件，用 Lighttpd WebDAV 共享多块硬盘。当前版本 **1.3.4**。
 
 入口：**服务 → WebDavUi**。
 
@@ -12,6 +12,7 @@
 - 通过界面修改挂载点，按 UUID 保存；被占用时拒绝正常卸载，迁移失败时尝试回滚。
 - 统一 14px 字号；服务操作、账号和服务状态使用独立间隔区块，状态位于页面底部。
 - 各盘独立属性数据库；上传缓冲保存在已挂载硬盘，根目录不可直接上传。
+- 每 60 秒核对一次挂载硬盘列表，仅在列表变化时刷新共享并记录系统日志；手动停止服务后不再核对。
 
 ## 直接安装：自动安装依赖
 
@@ -19,11 +20,11 @@
 
 ### opkg 固件：安装 IPK
 
-从本仓库 Actions 的成功构建中下载 IPK artifact，或在源码目录执行 `node scripts/build.cjs` 构建。将 `luci-app-webdavui_1.3.3_all.ipk` 复制至路由器后：
+从本仓库 Actions 的成功构建中下载 IPK artifact，或在源码目录执行 `node scripts/build.cjs` 构建。将 `luci-app-webdavui_1.3.4_all.ipk` 复制至路由器后：
 
 ```sh
 opkg update
-opkg install ./luci-app-webdavui_1.3.3_all.ipk
+opkg install ./luci-app-webdavui_1.3.4_all.ipk
 ```
 
 安装包的 Depends 包含全部直接依赖；opkg 会从该设备的软件源自动安装尚未满足的依赖。无需手动逐个安装 Lighttpd 模块。all 表示插件自身为脚本、与 CPU 架构无关；二进制依赖由目标固件的软件源提供。
@@ -52,7 +53,24 @@ sh install.sh
 3. 启用服务。若存在旧 nginx WebDAV 账号文件，首次安装可复用其密码摘要。
 4. Windows 映射 `http://路由器LAN地址:5006/`，根目录显示已挂载硬盘的文件夹。
 
-新增硬盘后点击“刷新硬盘”。热插拔事件也会延迟刷新。挂载点名称仅支持英文、数字、下划线和短横线；盘内中文文件名正常支持。
+新增硬盘后可点击“刷新硬盘”，热插拔事件也会延迟刷新。挂载点名称仅支持英文、数字、下划线和短横线；盘内中文文件名正常支持。
+
+## 挂载自动核对（1.3.4）
+
+服务运行期间，每 **60 秒**读取一次系统挂载表，对比共享父目录下一级、名称符合要求的已挂载硬盘与上次生成共享配置时的记录。用于补偿挂载较慢、漏掉热插拔事件等情况下，硬盘已挂载但 WebDAV 根目录未显示的问题。
+
+- 列表不变时不刷新配置、不重启 Lighttpd；核对本身不读取盘内文件，也不执行挂载、卸载或格式化。
+- 列表变化时重新生成共享配置并重启 WebDAV 服务，通常在一个核对周期内更新；刷新可能短暂中断正在进行的连接。
+- 修改挂载点期间暂停核对；手动停止服务后，核对进程也停止，不会自动重新启用服务。
+- 自动核对只发现**已挂载**的硬盘。新插盘能否自动挂载，仍由 OpenWrt 的挂载配置及文件系统驱动决定。
+
+刷新原因写入系统日志，可通过 LuCI“状态 → 系统日志”查看，或执行：
+
+```sh
+logread -e webdavui
+```
+
+自动刷新时的日志为 `Mounted disk list changed; requesting share refresh`。如硬盘文件夹仍未显示，请先确认系统中存在对应挂载点，再检查 `/tmp/webdavui-error.log`。
 
 ## 修改挂载点
 
@@ -86,6 +104,7 @@ node scripts/build.cjs
 | 各盘 .webdavui/properties.sqlite | 属性和文件锁数据库，禁止 HTTP 访问 |
 | 已挂载硬盘的 .webdavui/upload | 上传缓冲 |
 | /tmp/webdavui-error.log | 错误日志 |
+| /usr/libexec/webdavui-watch | 由 procd 管理的每 60 秒挂载核对进程 |
 
 IPK 安装可用 `opkg remove luci-app-webdavui` 卸载。源码安装用 `sh uninstall.sh`。保留配置、账号、系统挂载项及硬盘数据；不自动卸载其他程序可能共用的 Lighttpd 依赖。
 
@@ -94,5 +113,7 @@ HTTP Basic 仅用于可信 LAN，不提供 HTTPS 界面配置。服务以 root �
 ## 已验证与限制
 
 已在 KWRT、Lighttpd 1.4.85、Windows 原生 WebClient 上验证：中文文件复制、覆盖、重命名、内容校验、删除、多盘发现和根目录写入拒绝。挂载点迁移用独立临时 ext4 镜像验证了往返迁移、文件保留、UUID 保存和忙碌拒绝。
+
+1.3.4 已在路由器验证：挂载列表不变时经过完整核对周期不重启 Lighttpd；模拟共享记录漏掉 sdb1 后，自动刷新并恢复记录和共享目录。测试未卸载实体硬盘或修改盘内文件。
 
 未覆盖所有 OpenWrt 发行版、第二块实体盘、断电恢复、跨盘 MOVE/COPY 或 4GB 以上单文件。其他设备应先以少量测试文件验证。
