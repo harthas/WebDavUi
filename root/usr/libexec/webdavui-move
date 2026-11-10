@@ -25,6 +25,18 @@ device=${record%% *}
 rest=${record#* }
 fstype=${rest%% *}
 opts=${rest#* }
+newopts=$opts
+if [ "$fstype" = ntfs3 ]; then
+ newopts=''
+ pending=$opts
+ while [ -n "$pending" ]; do
+  token=${pending%%,*}
+  case "$pending" in *,*) pending=${pending#*,};; *) pending='';; esac
+  case "$token" in ''|iocharset=*) continue;; esac
+  newopts="${newopts:+$newopts,}$token"
+ done
+ newopts="${newopts:+$newopts,}iocharset=utf8"
+fi
 case "$device" in /dev/*) ;; *) fail '只支持真实块设备挂载';; esac
 case "$device" in /dev/loop*)
  loopname=${device##*/}
@@ -80,13 +92,14 @@ if [ ! -d "$target" ]; then mkdir "$target" || fail '无法创建目标目录'; 
 if [ "$was_running" = 1 ]; then /etc/init.d/webdavui stop >/dev/null 2>&1; sleep 1; fi
 if ! umount "$old" 2>/dev/null; then fail '磁盘正被其他程序占用，未修改挂载点。请停止下载、媒体服务或文件传输后重试'; fi
 detached=1
-mount -t "$fstype" -o "$opts" "$device" "$target" 2>/dev/null || fail '新挂载失败，将尝试恢复原挂载'
+mount -t "$fstype" -o "$newopts" "$device" "$target" 2>/dev/null || fail '新挂载失败，将尝试恢复原挂载'
 new_mounted=1
 if [ -z "$section" ]; then section=$(uci add fstab mount) || fail '无法创建持久挂载条目'; fi
 if ! {
  uci set "fstab.$section.uuid=$uuid" &&
  uci set "fstab.$section.target=$target" &&
  uci set "fstab.$section.enabled=1" &&
+ { [ "$fstype" != ntfs3 ] || { uci set "fstab.$section.fstype=ntfs3" && uci set "fstab.$section.options=$newopts"; }; } &&
  uci commit fstab
 }; then
  uci revert fstab

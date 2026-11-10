@@ -1,0 +1,51 @@
+#!/bin/sh
+# Persist UTF-8 for configured NTFS disks belonging to this share only.
+. /lib/functions.sh
+[ -z "$(uci -q changes fstab)" ] || { logger -t webdavui 'Skipped UTF-8 setup: fstab has unsaved changes'; exit 0; }
+config_load webdavui
+config_get base main root /mnt/usb
+base=$(readlink -f "$base") || exit 1
+[ -n "$base" ] && [ "$base" != / ] || exit 1
+changed=0
+configure_ntfs() {
+ local section="$1" target type uuid device info opts clean token
+ config_get target "$section" target
+ case "$target" in "$base/"*) ;; *) return 0;; esac
+ case "${target#"$base/"}" in ''|*[!a-zA-Z0-9_-]*) return 0;; esac
+ config_get type "$section" fstype
+ case "$type" in ''|auto|ntfs|ntfs3) ;; *) return 0;; esac
+ config_get uuid "$section" uuid
+ config_get device "$section" device
+ if [ "$type" != ntfs3 ] && [ "$type" != ntfs ]; then
+  info=$(block info 2>/dev/null | awk -v u="$uuid" -v d="$device" '(u!="" && index($0,"UUID=\""u"\"")) || (u=="" && d!="" && $1==d":") {print;exit}')
+  case "$info" in *'TYPE="ntfs"'*) ;; *) return 0;; esac
+ fi
+ config_get opts "$section" options
+ clean=''
+ # Preserve all other options, including read-only and ownership settings.
+ while [ -n "$opts" ]; do
+  token=${opts%%,*}
+  case "$opts" in *,*) opts=${opts#*,};; *) opts='';; esac
+  case "$token" in ''|iocharset=*) continue;; esac
+  clean="${clean:+$clean,}$token"
+ done
+ clean="${clean:+$clean,}iocharset=utf8"
+ config_get opts "$section" options
+ if [ "$type" != ntfs3 ] || [ "$opts" != "$clean" ]; then
+  uci set "fstab.$section.fstype=ntfs3" || return 1
+  uci set "fstab.$section.options=$clean" || return 1
+  changed=1
+ fi
+}
+config_load fstab
+mkdir -p /etc/webdavui
+backup=$(mktemp /tmp/webdavui-fstab.XXXXXX) || exit 1
+trap 'rm -f "$backup"' EXIT
+cp -p /etc/config/fstab "$backup" || exit 1
+config_foreach configure_ntfs mount
+if [ "$changed" = 1 ]; then
+ cp -p "$backup" /etc/webdavui/fstab-before-storage-utf8
+ chmod 600 /etc/webdavui/fstab-before-storage-utf8
+ uci commit fstab || exit 1
+ logger -t webdavui 'Saved UTF-8 mount options for shared NTFS disks; effective on next mount'
+fi

@@ -1,0 +1,40 @@
+#!/bin/sh
+# Installation/upgrade guard. Never stop the independent webdavui instance.
+. /lib/functions.sh
+fail() { logger -t webdavui "$*"; echo "WebDavUi: $*" >&2; exit 1; }
+[ -x /etc/init.d/uhttpd ] && [ -x /etc/init.d/lighttpd ] || exit 0
+[ -f /etc/lighttpd/lighttpd.conf ] || exit 0
+effective=$(mktemp /tmp/webdavui-lighttpd.XXXXXX) || exit 1
+trap 'rm -f "$effective"' EXIT
+/usr/sbin/lighttpd -p -f /etc/lighttpd/lighttpd.conf > "$effective" 2>/dev/null || fail '无法解析默认 Lighttpd 配置，请手动检查其是否与 LuCI 端口冲突'
+port=$(sed -n 's/^[[:space:]]*server\.port[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$effective" | head -n 1)
+port=${port:-80}
+conflict=0
+check_listener() {
+ local endpoint="$1"
+ [ "${endpoint##*:}" != "$port" ] || conflict=1
+}
+check_uhttpd() {
+ config_list_foreach "$1" listen_http check_listener
+ config_list_foreach "$1" listen_https check_listener
+}
+config_load uhttpd
+config_foreach check_uhttpd uhttpd
+[ "$conflict" = 1 ] || exit 0
+# Only automatically handle the stock /www instance. Custom sites need review.
+root=$(sed -n 's/^[[:space:]]*server\.document-root[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$effective" | head -n 1)
+[ "$root" = /www ] || fail "Lighttpd 与 LuCI 的 $port 端口冲突，但使用了自定义站点；请手动调整端口后重新安装"
+if [ ! -f /etc/webdavui/lighttpd-before-portcheck ]; then
+ {
+  printf 'default_lighttpd_port=%s\n' "$port"
+  if /etc/init.d/lighttpd enabled; then echo 'autostart=enabled'; else echo 'autostart=disabled'; fi
+ } > /etc/webdavui/lighttpd-before-portcheck
+ chmod 600 /etc/webdavui/lighttpd-before-portcheck
+fi
+/etc/init.d/lighttpd disable || fail '无法禁用默认 Lighttpd 自启动'
+/etc/init.d/lighttpd stop || fail '无法停止默认 Lighttpd 实例'
+if /etc/init.d/lighttpd enabled; then fail '默认 Lighttpd 仍启用了自启动，请手动检查'; fi
+if /etc/init.d/uhttpd enabled; then
+ /etc/init.d/uhttpd restart || fail '恢复 LuCI 的 uhttpd 服务失败，请通过 SSH 检查'
+fi
+logger -t webdavui "Disabled default Lighttpd on LuCI port $port; independent WebDavUi instance unchanged"

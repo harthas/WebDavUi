@@ -1,9 +1,10 @@
 #!/bin/sh
 [ -n "$IPKG_INSTROOT" ] && exit 0
 set -e
-chmod 755 /etc/init.d/webdavui /usr/libexec/webdavui-config /usr/libexec/webdavui-move /usr/libexec/webdavui-watch /usr/libexec/rpcd/webdavui
+chmod 755 /etc/init.d/webdavui /usr/libexec/webdavui-* /usr/libexec/rpcd/webdavui
 mkdir -p /etc/webdavui /mnt/usb
 chmod 700 /etc/webdavui
+/usr/libexec/webdavui-portcheck
 if [ ! -s /etc/webdavui/users ] && [ -s /etc/nginx/webdav.password ]; then
  cp /etc/nginx/webdav.password /etc/webdavui/users
 fi
@@ -25,6 +26,7 @@ fi
 uci -q delete webdavui.main.mode || true
 uci -q delete webdavui.main.mount || true
 uci commit webdavui
+/usr/libexec/webdavui-storage
 /etc/init.d/webdavui enable
 # 新安装默认关闭；升级保留 enabled 状态。配置错误会在页面中显示。
 /etc/init.d/webdavui restart || true

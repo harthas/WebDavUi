@@ -6,8 +6,14 @@ config_get bind main bind 127.0.0.1
 config_get port main port 5006
 config_get root main root /mnt/usb
 config_get_bool readonly main readonly 0
+config_get_bool ipv6 main ipv6 0
+config_get bind6 main bind6 ::
 fail() { echo "$*" >&2; exit 1; }
 case "$bind" in ''|*[!0-9.]*) fail '监听地址必须是 IPv4 地址';; esac
+if [ "$ipv6" = 1 ]; then
+ case "$bind6" in ''|*[!0-9a-fA-F:]*) fail 'IPv6 监听地址必须是不带方括号的 IPv6 地址';; esac
+ case "$bind6" in *:*) ;; *) fail 'IPv6 监听地址无效';; esac
+fi
 case "$port" in ''|*[!0-9]*) fail '端口无效';; esac
 [ "$port" -ge 1024 ] && [ "$port" -le 65535 ] || fail '端口范围为 1024–65535'
 
@@ -65,6 +71,14 @@ webdav.is-readonly = "enable"
  }
 }
 EOF
+if [ "$ipv6" = 1 ]; then
+ cat >> "$tmp" <<EOF
+\$SERVER["socket"] == "[$bind6]:$port" {
+ server.use-ipv6 = "enable"
+ server.v4mapped = "disable"
+}
+EOF
+fi
 while IFS= read -r disk; do
  name=$(basename "$disk")
  cat >> "$tmp" <<EOF

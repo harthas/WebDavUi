@@ -55,10 +55,12 @@ return view.extend({
   };
   update(data[1]);
   poll.add(function(){ return getStatus().then(update); },5);
-  var m=new form.Map('webdavui','WebDavUi','共享多硬盘：Z: 根目录显示共享父目录下已挂载的 sda1、sdb1 等文件夹。根目录不可写，请进入硬盘文件夹上传。各盘属性数据库独立保存；上传缓冲自动选择一块已挂载硬盘。');
+  var m=new form.Map('webdavui','WebDavUi','根目录不可写，请进入硬盘文件夹上传。各盘属性数据库独立保存；上传缓冲自动选择一块已挂载硬盘。');
   var s=m.section(form.NamedSection,'main','webdavui'); s.anonymous=true;
   var o=s.option(form.Flag,'enabled','启用服务'); o.rmempty=false;
   o=s.option(form.Value,'bind','监听 IPv4 地址','仅在所选地址监听。使用路由器 LAN 地址。'); o.datatype='ip4addr'; o.rmempty=false;
+  o=s.option(form.Flag,'ipv6','启用 IPv6 监听','增加独立 IPv6 监听，不改变 IPv4。监听 :: 会覆盖公网 IPv6；远程访问请配合 HTTPS 或可信隧道。'); o.rmempty=false; o.default='0';
+  o=s.option(form.Value,'bind6','监听 IPv6 地址','默认 :: 表示所有本机 IPv6 地址；填写时不带方括号。仅监听局域网时可指定 LAN IPv6 地址。'); o.datatype='ip6addr'; o.default='::'; o.rmempty=false; o.depends('ipv6','1');
   o=s.option(form.Value,'port','端口'); o.datatype='range(1024,65535)'; o.rmempty=false;
   o=s.option(form.Value,'root','共享父目录','各块硬盘应分别挂载在该目录下，例如 /mnt/usb/sda1、/mnt/usb/sdb1。');
   o.rmempty=false;

@@ -1,6 +1,6 @@
 # WebDavUi
 
-轻量 OpenWrt / KWRT LuCI 插件，用 Lighttpd WebDAV 共享多块硬盘。当前版本 **1.3.4**。
+轻量 OpenWrt / KWRT LuCI 插件，用 Lighttpd WebDAV 共享多块硬盘。当前版本 **1.3.5**。
 
 入口：**服务 → WebDavUi**。
 
@@ -13,6 +13,9 @@
 - 统一 14px 字号；服务操作、账号和服务状态使用独立间隔区块，状态位于页面底部。
 - 各盘独立属性数据库；上传缓冲保存在已挂载硬盘，根目录不可直接上传。
 - 每 60 秒核对一次挂载硬盘列表，仅在列表变化时刷新共享并记录系统日志；手动停止服务后不再核对。
+- 可选 IPv6 独立监听，默认关闭；保留原有 IPv4 监听。
+- 安装时补齐 USB 存储、UAS、NTFS3 和 UTF-8 驱动，为共享 NTFS 挂载项保存 UTF-8 参数。
+- 安装及升级时检查默认 Lighttpd 与 LuCI 的管理端口冲突。
 
 ## 直接安装：自动安装依赖
 
@@ -20,11 +23,11 @@
 
 ### opkg 固件：安装 IPK
 
-从本仓库 Actions 的成功构建中下载 IPK artifact，或在源码目录执行 `node scripts/build.cjs` 构建。将 `luci-app-webdavui_1.3.4_all.ipk` 复制至路由器后：
+从本仓库 Actions 的成功构建中下载 IPK artifact，或在源码目录执行 `node scripts/build.cjs` 构建。将 `luci-app-webdavui_1.3.5_all.ipk` 复制至路由器后：
 
 ```sh
 opkg update
-opkg install ./luci-app-webdavui_1.3.4_all.ipk
+opkg install ./luci-app-webdavui_1.3.5_all.ipk
 ```
 
 安装包的 Depends 包含全部直接依赖；opkg 会从该设备的软件源自动安装尚未满足的依赖。无需手动逐个安装 Lighttpd 模块。all 表示插件自身为脚本、与 CPU 架构无关；二进制依赖由目标固件的软件源提供。
@@ -46,6 +49,22 @@ sh install.sh
 
 ## 首次配置
 
+### IPv6 监听
+
+页面可单独启用“IPv6 监听”，IPv4 监听保持不变。默认关闭，旧配置未设置 `ipv6` 时也保持关闭。IPv6 地址默认为 `::`，表示所有本机 IPv6 地址；也可指定本机的 LAN IPv6 地址，填写时不带方括号。IPv4 和 IPv6 使用相同端口、账号、只读设置及共享规则。
+
+保存并应用后，插件为 IPv6 生成独立监听套接字，禁用该套接字的 IPv4 映射，避免与 IPv4 监听冲突。完整配置通过 Lighttpd 检查后才替换生效。
+
+DDNS 只有 AAAA 记录时，客户端必须具备 IPv6 连接，访问格式为 `http://域名:5006/`；直接使用 IPv6 地址时为 `http://[IPv6地址]:5006/`。监听 `::` 包含公网地址，且已有防火墙允许规则时服务可能立即对公网可达。插件不会自动添加防火墙规则或配置 HTTPS；明文 HTTP Basic 不适合直接暴露公网，远程使用应配置 HTTPS 或通过 Tailscale 等可信隧道访问。光猫的 IPv6 入站策略也可能影响外部访问。
+
+### 安装时防止管理端口冲突
+
+安装及升级会解析默认 Lighttpd 配置，并与 uhttpd 的 HTTP / HTTPS 监听端口比较。发现默认 `/www` 实例与 LuCI 使用相同端口时，停止并禁用默认 `lighttpd` 自启动；uhttpd 已启用自启动时重新启动它，以释放此前被抢占的管理端口。独立的 `webdavui` 实例不受此检查影响。
+
+若默认 Lighttpd 使用自定义站点，发现冲突时安装报错，要求手动调整端口；配置无法解析时同样报错。原默认 Lighttpd 自启动状态记录在 `/etc/webdavui/lighttpd-before-portcheck`，不会在卸载插件时自动恢复可能冲突的服务。
+
+此检查用于预防默认 Lighttpd 抢占 LuCI 端口；不覆盖其他程序占用、安装后手动改动、LuCI 本身故障等情况。**本项代码尚未执行验证，也未完成全新安装后首次重启验证。**
+
 首次安装默认关闭服务，避免未设密码就公开磁盘。监听地址自动取本机 LAN IPv4，无法识别时保留 127.0.0.1；端口默认为 5006。升级保留现有启用状态、地址、端口和账号。
 
 1. 在“系统 → 挂载点”将各盘挂在 `/mnt/usb/sda1`、`/mnt/usb/sdb1` 等目录。
@@ -54,6 +73,16 @@ sh install.sh
 4. Windows 映射 `http://路由器LAN地址:5006/`，根目录显示已挂载硬盘的文件夹。
 
 新增硬盘后可点击“刷新硬盘”，热插拔事件也会延迟刷新。挂载点名称仅支持英文、数字、下划线和短横线；盘内中文文件名正常支持。
+
+## USB / NTFS 与中文文件名支持（1.3.5）
+
+IPK、APK 和源码安装均自动从当前固件的软件源安装 `kmod-usb-storage`、`kmod-usb-storage-uas`、`kmod-fs-ntfs3` 和 `kmod-nls-utf8`，用于 USB 存储、UAS 硬盘盒、NTFS3 和 UTF-8 文件名支持。内核驱动必须与设备固件匹配，软件源缺包时安装会报错，不跨版本强装。
+
+安装和服务启动时，会检查 `/etc/config/fstab`：对共享父目录下一级已配置的 NTFS / NTFS3 挂载项，保存 `fstype=ntfs3` 和 `iocharset=utf8`。未指定文件系统的条目仅在通过 UUID（无 UUID 时按设备）确认是 NTFS 后处理。替换原有 `iocharset` 时保留其他选项，包括 `ro`、`uid`、`gid`。明确使用其他驱动（例如 ntfs-3g）、共享目录以外的挂载项及未保存的 fstab 修改不会被改动。
+
+发生修改前备份为 `/etc/webdavui/fstab-before-storage-utf8`。此步骤不创建新挂载点、不迁移硬盘，也不强制卸载或重新挂载使用中的硬盘；**新参数在下次正常挂载或重启路由器后生效**。已挂载为 `iocharset=default` 的磁盘需先结束文件传输，再在系统挂载点页面正常卸载、重新挂载。界面“修改挂载点”也会为 NTFS3 的新挂载和持久配置保留 UTF-8。
+
+新硬盘仍需先在“系统 → 挂载点”配置到 `/mnt/usb/sda1`、`/mnt/usb/sdb1` 等目录，再启动或重启 WebDavUi。仅安装驱动不代表任意新硬盘都会自动挂载到共享目录。
 
 ## 挂载自动核对（1.3.4）
 
@@ -90,9 +119,9 @@ node scripts/build.cjs
 
 ## 依赖
 
-`luci-base`、`rpcd`、`rpcd-mod-file`、`jshn`、`jsonfilter`、`lighttpd`、`lighttpd-mod-webdav`、`lighttpd-mod-auth`、`lighttpd-mod-authn_file`、`lighttpd-mod-access`、`openssl-util`、`block-mount`。
+`luci-base`、`rpcd`、`rpcd-mod-file`、`jshn`、`jsonfilter`、`lighttpd`、`lighttpd-mod-webdav`、`lighttpd-mod-auth`、`lighttpd-mod-authn_file`、`lighttpd-mod-access`、`openssl-util`、`block-mount`、`kmod-usb-storage`、`kmod-usb-storage-uas`、`kmod-fs-ntfs3`、`kmod-nls-utf8`。
 
-若固件软件源缺少其中任意组件，安装应停止；不保证所有第三方裁剪固件或非常旧版本。文件系统驱动仍由目标系统提供，本插件不会格式化硬盘或自动替换磁盘驱动。
+若固件软件源缺少其中任意组件，安装应停止；不保证所有第三方裁剪固件或非常旧版本。其他文件系统的驱动仍需按需安装，本插件不会格式化硬盘。
 
 ## 文件及卸载
 
@@ -105,12 +134,15 @@ node scripts/build.cjs
 | 已挂载硬盘的 .webdavui/upload | 上传缓冲 |
 | /tmp/webdavui-error.log | 错误日志 |
 | /usr/libexec/webdavui-watch | 由 procd 管理的每 60 秒挂载核对进程 |
+| /usr/libexec/webdavui-storage | 为共享目录内已配置的 NTFS 挂载项补齐 UTF-8 参数 |
 
 IPK 安装可用 `opkg remove luci-app-webdavui` 卸载。源码安装用 `sh uninstall.sh`。保留配置、账号、系统挂载项及硬盘数据；不自动卸载其他程序可能共用的 Lighttpd 依赖。
 
 HTTP Basic 仅用于可信 LAN，不提供 HTTPS 界面配置。服务以 root 运行以兼容现有磁盘权限。仓库不包含任何真实密码、用户摘要、令牌或部署凭据。
 
 ## 已验证与限制
+
+1.3.5 的存储配置逻辑已在隔离 UCI 配置中验证：NTFS 检测、UTF-8 参数替换、保留其他选项、排除无关挂载项、重复执行不变及跳过未保存修改。IPv6 界面 JavaScript 和独立监听配置语法已检查；功能已部署到路由器，部署时 IPv6 保持关闭，未验证公网 IPv6 文件传输。安装端口检查尚未执行验证，也未进行全新安装后的首次重启验证。
 
 已在 KWRT、Lighttpd 1.4.85、Windows 原生 WebClient 上验证：中文文件复制、覆盖、重命名、内容校验、删除、多盘发现和根目录写入拒绝。挂载点迁移用独立临时 ext4 镜像验证了往返迁移、文件保留、UUID 保存和忙碌拒绝。
 

@@ -1,6 +1,8 @@
 config webdavui 'main'
 	option enabled '0'
 	option bind '127.0.0.1'
+	option ipv6 '0'
+	option bind6 '::'
 	option port '5006'
 	option root '/mnt/usb'
 	option readonly '0'

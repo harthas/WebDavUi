@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-webdavui
-PKG_VERSION:=1.3.4
+PKG_VERSION:=1.3.5
 PKG_RELEASE:=1
 PKGARCH:=all
 
@@ -12,7 +12,7 @@ define Package/luci-app-webdavui
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
   TITLE:=LuCI support for WebDav
-  DEPENDS:=+luci-base +rpcd +rpcd-mod-file +jshn +jsonfilter +lighttpd +lighttpd-mod-webdav +lighttpd-mod-auth +lighttpd-mod-authn_file +lighttpd-mod-access +openssl-util +block-mount
+  DEPENDS:=+luci-base +rpcd +rpcd-mod-file +jshn +jsonfilter +lighttpd +lighttpd-mod-webdav +lighttpd-mod-auth +lighttpd-mod-authn_file +lighttpd-mod-access +openssl-util +block-mount +kmod-usb-storage +kmod-usb-storage-uas +kmod-fs-ntfs3 +kmod-nls-utf8
 endef
 
 define Package/luci-app-webdavui/description

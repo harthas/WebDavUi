@@ -10,3 +10,7 @@ lighttpd-mod-authn_file
 lighttpd-mod-access
 openssl-util
 block-mount
+kmod-usb-storage
+kmod-usb-storage-uas
+kmod-fs-ntfs3
+kmod-nls-utf8
